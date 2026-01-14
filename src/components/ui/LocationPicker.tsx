@@ -50,6 +50,8 @@ export function LocationPicker({ value, onChange, label }: LocationPickerProps) 
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -63,6 +65,26 @@ export function LocationPicker({ value, onChange, label }: LocationPickerProps) 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Get user's location when map expands
+  useEffect(() => {
+    if (isExpanded && !userLocation && !value) {
+      if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            setUserLocation([position.coords.latitude, position.coords.longitude]);
+            setLocationError(null);
+          },
+          (error) => {
+            console.error('Geolocation error:', error);
+            setLocationError('Kunde inte hämta din plats');
+          }
+        );
+      } else {
+        setLocationError('Geolocation stöds inte i denna webbläsare');
+      }
+    }
+  }, [isExpanded, userLocation, value]);
 
   const searchLocation = useCallback(async (query: string) => {
     if (query.length < 2) {
@@ -113,8 +135,10 @@ export function LocationPicker({ value, onChange, label }: LocationPickerProps) 
 
   // Default center: Sweden
   const defaultCenter: [number, number] = [62.0, 15.0];
-  const center: [number, number] = value ? [value.lat, value.lng] : defaultCenter;
-  const zoom = value ? 10 : 4;
+  const center: [number, number] = value
+    ? [value.lat, value.lng]
+    : userLocation || defaultCenter;
+  const zoom = value ? 10 : userLocation ? 12 : 4;
 
   useEffect(() => {
     setPlaceName(value?.name || '');
@@ -161,6 +185,26 @@ export function LocationPicker({ value, onChange, label }: LocationPickerProps) 
   const handleClear = () => {
     onChange(null);
     setPlaceName('');
+  };
+
+  const handleUseCurrentLocation = () => {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          setUserLocation([lat, lng]);
+          setLocationError(null);
+          handleLocationSelect({ lat, lng } as LatLng);
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+          setLocationError('Kunde inte hämta din plats');
+        }
+      );
+    } else {
+      setLocationError('Geolocation stöds inte i denna webbläsare');
+    }
   };
 
   return (
@@ -212,32 +256,64 @@ export function LocationPicker({ value, onChange, label }: LocationPickerProps) 
 
       {isExpanded && (
         <>
-          <div ref={searchRef} className="relative">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={handleSearchChange}
-              onFocus={() => searchResults.length > 0 && setShowResults(true)}
-              placeholder="Sök plats..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 text-sm"
-            />
-            {isSearching && (
-              <div className="absolute right-3 top-2.5 text-gray-400 text-sm">...</div>
-            )}
-            {showResults && searchResults.length > 0 && (
-              <ul className="absolute mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-sm ring-1 ring-black ring-opacity-5 overflow-auto" style={{ zIndex: 10000 }}>
-                {searchResults.map((result) => (
-                  <li
-                    key={result.place_id}
-                    onClick={() => handleSelectResult(result)}
-                    className="cursor-pointer select-none py-2 px-3 hover:bg-green-50"
-                  >
-                    {result.display_name}
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div className="flex gap-2">
+            <div ref={searchRef} className="relative flex-1">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                onFocus={() => searchResults.length > 0 && setShowResults(true)}
+                placeholder="Sök plats..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 text-sm"
+              />
+              {isSearching && (
+                <div className="absolute right-3 top-2.5 text-gray-400 text-sm">...</div>
+              )}
+              {showResults && searchResults.length > 0 && (
+                <ul className="absolute mt-1 w-full bg-white shadow-lg max-h-60 rounded-md py-1 text-sm ring-1 ring-black ring-opacity-5 overflow-auto" style={{ zIndex: 10000 }}>
+                  {searchResults.map((result) => (
+                    <li
+                      key={result.place_id}
+                      onClick={() => handleSelectResult(result)}
+                      className="cursor-pointer select-none py-2 px-3 hover:bg-green-50"
+                    >
+                      {result.display_name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleUseCurrentLocation}
+              className="px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-white hover:bg-gray-50 focus:outline-none focus:ring-green-500 focus:border-green-500 text-sm"
+              title="Använd min plats"
+            >
+              <svg
+                className="w-5 h-5 text-gray-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+              </svg>
+            </button>
           </div>
+
+          {locationError && (
+            <p className="text-xs text-red-500">{locationError}</p>
+          )}
 
           <div className="rounded-lg overflow-hidden border border-gray-300" style={{ height: '300px' }}>
             <MapContainer
@@ -250,7 +326,7 @@ export function LocationPicker({ value, onChange, label }: LocationPickerProps) 
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
               <MapClickHandler onLocationSelect={handleLocationSelect} />
-              <MapUpdater center={center} zoom={value ? 10 : 4} />
+              <MapUpdater center={center} zoom={zoom} />
               {value && <Marker position={[value.lat, value.lng]} />}
             </MapContainer>
           </div>
