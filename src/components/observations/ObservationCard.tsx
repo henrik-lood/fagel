@@ -74,12 +74,12 @@ export function ObservationCard({
 
         {/* Bird name */}
         <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-gray-900 truncate">
+          <h3 className="text-lg font-semibold text-gray-900 break-words hyphens-auto">
             {species ? capitalize(species.name) : "Okänd art"}
           </h3>
           {species ? (
             <div className="flex items-center gap-2">
-              <p className="text-sm text-gray-500 italic">
+              <p className="text-sm text-gray-500 italic break-words">
                 {capitalize(species.latinName)}
               </p>
               {wikiUrl && (
