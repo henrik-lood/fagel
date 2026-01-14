@@ -72,8 +72,12 @@ export function LocationPicker({ value, onChange, label }: LocationPickerProps) 
       if ('geolocation' in navigator) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
-            setUserLocation([position.coords.latitude, position.coords.longitude]);
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            setUserLocation([lat, lng]);
             setLocationError(null);
+            // Automatically create a pin at user's location
+            handleLocationSelect({ lat, lng } as LatLng);
           },
           (error) => {
             console.error('Geolocation error:', error);
@@ -216,7 +220,7 @@ export function LocationPicker({ value, onChange, label }: LocationPickerProps) 
       {value ? (
         <div className="bg-gray-50 rounded-lg p-3 space-y-2">
           <div className="flex justify-between items-start">
-            <div className="text-sm">
+            <div className="text-sm flex-1">
               <input
                 type="text"
                 value={placeName}
@@ -231,9 +235,23 @@ export function LocationPicker({ value, onChange, label }: LocationPickerProps) 
             <button
               type="button"
               onClick={handleClear}
-              className="text-red-500 hover:text-red-700 text-sm"
+              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+              title="Ta bort"
+              aria-label="Ta bort"
             >
-              Ta bort
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
             </button>
           </div>
           <button
