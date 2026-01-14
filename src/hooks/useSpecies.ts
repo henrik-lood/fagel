@@ -1,33 +1,40 @@
-import { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, addDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { useAuth } from '../contexts/AuthContext';
-import type { BirdSpecies } from '../types';
+import { useState, useEffect, useMemo } from "react";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
+import { db } from "../lib/firebase";
+import { useAuth } from "../contexts/AuthContext";
+import type { BirdSpecies } from "../types";
 
 export function useSpecies() {
   const { user } = useAuth();
   const [sharedSpecies, setSharedSpecies] = useState<BirdSpecies[]>([]);
   const [userSpecies, setUserSpecies] = useState<BirdSpecies[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Load shared birds from 'birds' collection
   useEffect(() => {
     async function loadSharedSpecies() {
       try {
-        const snapshot = await getDocs(collection(db, 'birds'));
+        const snapshot = await getDocs(collection(db, "birds"));
         const birds = snapshot.docs.map((doc) => {
           const data = doc.data();
           return {
-            name: data.name || '',
-            latinName: data.latinName || '',
+            name: data.name || "",
+            latinName: data.latinName || "",
             id: doc.id,
           } as BirdSpecies;
         });
-        console.log('Loaded shared species:', birds.length);
+        console.log("Loaded shared species:", birds.length);
         setSharedSpecies(birds);
       } catch (error) {
-        console.error('Failed to load shared species:', error);
+        console.error("Failed to load shared species:", error);
       }
     }
     loadSharedSpecies();
@@ -43,19 +50,21 @@ export function useSpecies() {
       }
 
       try {
-        const snapshot = await getDocs(collection(db, 'users', user.uid, 'myBirds'));
+        const snapshot = await getDocs(
+          collection(db, "users", user.uid, "myBirds")
+        );
         const birds = snapshot.docs.map((doc) => {
           const data = doc.data();
           return {
-            name: data.name || '',
-            latinName: data.latinName || '',
+            name: data.name || "",
+            latinName: data.latinName || "",
             id: doc.id,
           } as BirdSpecies;
         });
-        console.log('Loaded user custom species:', birds.length);
+        console.log("Loaded user custom species:", birds.length);
         setUserSpecies(birds);
       } catch (error) {
-        console.error('Failed to load user species:', error);
+        console.error("Failed to load user species:", error);
       } finally {
         setLoading(false);
       }
@@ -69,18 +78,21 @@ export function useSpecies() {
     sharedSpecies.forEach((bird) => merged.set(bird.id, bird));
     userSpecies.forEach((bird) => merged.set(bird.id, bird));
     const result = Array.from(merged.values());
-    result.sort((a, b) => a.name.localeCompare(b.name, 'sv'));
+    result.sort((a, b) => a.name.localeCompare(b.name, "sv"));
     return result;
   }, [sharedSpecies, userSpecies]);
 
-  const addSpecies = async (name: string, latinName: string): Promise<BirdSpecies> => {
-    if (!user) throw new Error('Måste vara inloggad');
+  const addSpecies = async (
+    name: string,
+    latinName: string
+  ): Promise<BirdSpecies> => {
+    if (!user) throw new Error("Måste vara inloggad");
 
     // Add to user's myBirds subcollection
-    const docRef = await addDoc(collection(db, 'users', user.uid, 'myBirds'), {
+    const docRef = await addDoc(collection(db, "users", user.uid, "myBirds"), {
       name: name.toLowerCase(),
       latinName: latinName.toLowerCase(),
-      creator: user.displayName || user.email || 'unknown',
+      creator: user.displayName || user.email || "unknown",
     });
     const newSpecies: BirdSpecies = {
       id: docRef.id,
@@ -89,6 +101,45 @@ export function useSpecies() {
     };
     setUserSpecies((prev) => [...prev, newSpecies]);
     return newSpecies;
+  };
+
+  const updateSpecies = async (
+    id: string,
+    name: string,
+    latinName: string
+  ): Promise<void> => {
+    if (!user) throw new Error("Måste vara inloggad");
+
+    // Update in user's myBirds subcollection
+    const docRef = doc(db, "users", user.uid, "myBirds", id);
+    await updateDoc(docRef, {
+      name: name.toLowerCase(),
+      latinName: latinName.toLowerCase(),
+    });
+
+    // Update local state
+    setUserSpecies((prev) =>
+      prev.map((bird) =>
+        bird.id === id
+          ? {
+              ...bird,
+              name: name.toLowerCase(),
+              latinName: latinName.toLowerCase(),
+            }
+          : bird
+      )
+    );
+  };
+
+  const deleteSpecies = async (id: string): Promise<void> => {
+    if (!user) throw new Error("Måste vara inloggad");
+
+    // Delete from user's myBirds subcollection
+    const docRef = doc(db, "users", user.uid, "myBirds", id);
+    await deleteDoc(docRef);
+
+    // Update local state
+    setUserSpecies((prev) => prev.filter((bird) => bird.id !== id));
   };
 
   const filteredSpecies = useMemo(() => {
@@ -120,6 +171,9 @@ export function useSpecies() {
     getSpeciesById,
     getSpeciesMap,
     addSpecies,
+    updateSpecies,
+    deleteSpecies,
+    userSpecies,
     loading,
   };
 }

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 
 interface BirdMediaInfo {
   imageUrl: string | null;
+  fullImageUrl: string | null;
   wikiUrl: string | null;
 }
 
@@ -35,13 +36,14 @@ export function useBirdImage(
 ) {
   const [mediaInfo, setMediaInfo] = useState<BirdMediaInfo>({
     imageUrl: null,
+    fullImageUrl: null,
     wikiUrl: null,
   });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!latinName && !swedishName) {
-      setMediaInfo({ imageUrl: null, wikiUrl: null });
+      setMediaInfo({ imageUrl: null, fullImageUrl: null, wikiUrl: null });
       return;
     }
 
@@ -61,7 +63,7 @@ export function useBirdImage(
     // Check if recently failed - allow retry after 10 seconds
     const lastFailure = failedAttempts.get(cacheKey);
     if (lastFailure && Date.now() - lastFailure < 10000) {
-      setMediaInfo({ imageUrl: null, wikiUrl: null });
+      setMediaInfo({ imageUrl: null, fullImageUrl: null, wikiUrl: null });
       return;
     }
 
@@ -72,7 +74,11 @@ export function useBirdImage(
         await rateLimiter.throttle();
 
         // Try Latin name first
-        let info: BirdMediaInfo = { imageUrl: null, wikiUrl: null };
+        let info: BirdMediaInfo = {
+          imageUrl: null,
+          fullImageUrl: null,
+          wikiUrl: null,
+        };
         if (latinName) {
           info = await getBirdMediaFromWikidata(latinName);
         }
@@ -94,7 +100,7 @@ export function useBirdImage(
         console.error("Failed to fetch bird media:", error);
         // Mark as failed with timestamp for retry
         failedAttempts.set(cacheKey, Date.now());
-        setMediaInfo({ imageUrl: null, wikiUrl: null });
+        setMediaInfo({ imageUrl: null, fullImageUrl: null, wikiUrl: null });
       } finally {
         setLoading(false);
       }
@@ -127,7 +133,7 @@ async function getBirdMediaFromWikidata(
     const searchData = await searchResponse.json();
 
     if (!searchData.search?.length) {
-      return { imageUrl: null, wikiUrl: null };
+      return { imageUrl: null, fullImageUrl: null, wikiUrl: null };
     }
 
     // Try each result to find one with matching taxon name
@@ -161,11 +167,13 @@ async function getBirdMediaFromWikidata(
 
       // Get image from P18 claim
       let imageUrl: string | null = null;
+      let fullImageUrl: string | null = null;
       const imageClaim = entity.claims?.P18?.[0];
       if (imageClaim?.mainsnak?.datavalue?.value) {
         const imageName = imageClaim.mainsnak.datavalue.value;
-        // Get proper thumbnail URL from Commons API
+        // Get both thumbnail (100px) and full-size (800px) URLs
         imageUrl = await getCommonsImageUrl(imageName, 100);
+        fullImageUrl = await getCommonsImageUrl(imageName, 800);
       }
 
       // Get Wikipedia URL from sitelinks (prefer Swedish, then English)
@@ -182,14 +190,14 @@ async function getBirdMediaFromWikidata(
       }
 
       if (imageUrl || wikiUrl) {
-        return { imageUrl, wikiUrl };
+        return { imageUrl, fullImageUrl, wikiUrl };
       }
     }
 
-    return { imageUrl: null, wikiUrl: null };
+    return { imageUrl: null, fullImageUrl: null, wikiUrl: null };
   } catch (error) {
     console.error("Wikidata fetch error:", error);
-    return { imageUrl: null, wikiUrl: null };
+    return { imageUrl: null, fullImageUrl: null, wikiUrl: null };
   }
 }
 

@@ -7,6 +7,7 @@ interface ObservationCardProps {
   species?: BirdSpecies;
   onEdit?: (birdId: string) => void;
   onDelete?: (birdId: string) => void;
+  onImageClick?: (imageUrl: string, altText: string) => void;
 }
 
 const Checkbox = ({ checked }: { checked?: boolean }) => (
@@ -38,6 +39,7 @@ export function ObservationCard({
   species,
   onEdit,
   onDelete,
+  onImageClick,
 }: ObservationCardProps) {
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -75,7 +77,7 @@ export function ObservationCard({
     };
   }, []);
 
-  const { imageUrl, wikiUrl } = useBirdImage(
+  const { imageUrl, fullImageUrl, wikiUrl } = useBirdImage(
     species?.latinName,
     species?.name,
     isVisible
@@ -93,8 +95,14 @@ export function ObservationCard({
             <img
               src={imageUrl}
               alt={species?.name || "Bird"}
-              className="w-16 h-16 rounded-lg object-cover bg-gray-100"
+              className="w-16 h-16 rounded-lg object-cover bg-gray-100 cursor-pointer hover:opacity-80 transition-opacity"
               loading="lazy"
+              onClick={() =>
+                onImageClick?.(
+                  fullImageUrl || imageUrl,
+                  species?.name || "Bird"
+                )
+              }
             />
           ) : (
             <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center">
