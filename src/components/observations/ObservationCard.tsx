@@ -1,3 +1,4 @@
+import { useRef, useEffect, useState } from "react";
 import type { BirdObservation, BirdSpecies } from "../../types";
 import { useBirdImage } from "../../hooks/useBirdImage";
 
@@ -39,10 +40,52 @@ export function ObservationCard({
   onDelete,
 }: ObservationCardProps) {
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-  const { imageUrl, wikiUrl } = useBirdImage(species?.latinName, species?.name);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    let timeoutId: number;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            // Add small random delay to stagger fetches
+            const delay = Math.random() * 300;
+            timeoutId = setTimeout(() => {
+              setIsVisible(true);
+            }, delay);
+            // Once visible, stop observing
+            observer.disconnect();
+          }
+        });
+      },
+      {
+        rootMargin: "100px", // Start fetching 100px before card is visible
+      }
+    );
+
+    if (cardRef.current) {
+      observer.observe(cardRef.current);
+    }
+
+    return () => {
+      observer.disconnect();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
+
+  const { imageUrl, wikiUrl } = useBirdImage(
+    species?.latinName,
+    species?.name,
+    isVisible
+  );
 
   return (
-    <div className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow">
+    <div
+      ref={cardRef}
+      className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow"
+    >
       <div className="flex gap-3 mb-3">
         {/* Bird image thumbnail */}
         <div className="flex-shrink-0">

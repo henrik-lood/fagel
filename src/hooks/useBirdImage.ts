@@ -6,54 +6,32 @@ interface BirdMediaInfo {
 }
 
 const cache = new Map<string, BirdMediaInfo>();
+const failedAttempts = new Map<string, number>(); // Track failed fetches with timestamp
 
-// Request queue to prevent rate limiting
-class RequestQueue {
-  private queue: Array<() => Promise<void>> = [];
-  private activeRequests = 0;
-  private readonly maxConcurrent = 2; // Max concurrent requests
-  private readonly delayMs = 500; // Delay between requests
+// Global rate limiter - max 1 request per second to respect API limits
+class RateLimiter {
+  private lastRequestTime = 0;
+  private readonly minDelayMs = 1000; // 1 second between requests
 
-  async enqueue<T>(fn: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      this.queue.push(async () => {
-        try {
-          const result = await fn();
-          resolve(result);
-        } catch (error) {
-          reject(error);
-        }
-      });
-      this.processQueue();
-    });
-  }
+  async throttle(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
 
-  private async processQueue() {
-    if (this.activeRequests >= this.maxConcurrent || this.queue.length === 0) {
-      return;
+    if (timeSinceLastRequest < this.minDelayMs) {
+      const waitTime = this.minDelayMs - timeSinceLastRequest;
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
     }
 
-    const task = this.queue.shift();
-    if (!task) return;
-
-    this.activeRequests++;
-
-    try {
-      await task();
-    } finally {
-      this.activeRequests--;
-      // Add delay before processing next request
-      await new Promise((resolve) => setTimeout(resolve, this.delayMs));
-      this.processQueue();
-    }
+    this.lastRequestTime = Date.now();
   }
 }
 
-const requestQueue = new RequestQueue();
+const rateLimiter = new RateLimiter();
 
 export function useBirdImage(
   latinName: string | undefined,
-  swedishName?: string
+  swedishName?: string,
+  shouldFetch: boolean = true
 ) {
   const [mediaInfo, setMediaInfo] = useState<BirdMediaInfo>({
     imageUrl: null,
@@ -67,6 +45,10 @@ export function useBirdImage(
       return;
     }
 
+    if (!shouldFetch) {
+      return;
+    }
+
     const cacheKey = (latinName || swedishName || "").toLowerCase();
 
     // Check cache first
@@ -76,29 +58,42 @@ export function useBirdImage(
       return;
     }
 
+    // Check if recently failed - allow retry after 10 seconds
+    const lastFailure = failedAttempts.get(cacheKey);
+    if (lastFailure && Date.now() - lastFailure < 10000) {
+      setMediaInfo({ imageUrl: null, wikiUrl: null });
+      return;
+    }
+
     async function fetchMediaInfo() {
       setLoading(true);
       try {
-        // Queue the request to prevent overwhelming the API
-        const info = await requestQueue.enqueue(async () => {
-          // Try Latin name first
-          let result: BirdMediaInfo = { imageUrl: null, wikiUrl: null };
-          if (latinName) {
-            result = await getBirdMediaFromWikidata(latinName);
-          }
+        // Wait for rate limiter before making any requests
+        await rateLimiter.throttle();
 
-          // Fallback to Swedish name if no results
-          if (!result.imageUrl && !result.wikiUrl && swedishName) {
-            result = await getBirdMediaFromWikidata(swedishName);
-          }
+        // Try Latin name first
+        let info: BirdMediaInfo = { imageUrl: null, wikiUrl: null };
+        if (latinName) {
+          info = await getBirdMediaFromWikidata(latinName);
+        }
 
-          return result;
-        });
+        // Fallback to Swedish name if no results
+        if (!info.imageUrl && !info.wikiUrl && swedishName) {
+          await rateLimiter.throttle();
+          info = await getBirdMediaFromWikidata(swedishName);
+        }
 
-        cache.set(cacheKey, info);
+        // Only cache if we got some data
+        if (info.imageUrl || info.wikiUrl) {
+          cache.set(cacheKey, info);
+          failedAttempts.delete(cacheKey); // Clear any previous failure
+        }
+
         setMediaInfo(info);
       } catch (error) {
         console.error("Failed to fetch bird media:", error);
+        // Mark as failed with timestamp for retry
+        failedAttempts.set(cacheKey, Date.now());
         setMediaInfo({ imageUrl: null, wikiUrl: null });
       } finally {
         setLoading(false);
@@ -106,7 +101,7 @@ export function useBirdImage(
     }
 
     fetchMediaInfo();
-  }, [latinName, swedishName]);
+  }, [latinName, swedishName, shouldFetch]);
 
   return { ...mediaInfo, loading };
 }
